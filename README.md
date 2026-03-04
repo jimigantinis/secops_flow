@@ -109,7 +109,7 @@ src/
 
 ## License
 
-MIT — feel free to use, modify, and distribute.
+Apache-2.0 — feel free to use, modify, and distribute.
 
 ---
 ---
@@ -221,4 +221,4 @@ src/
 
 ## Licença
 
-MIT — livre para usar, modificar e distribuir.
+Apache-2.0 — livre para usar, modificar e distribuir.
