@@ -96,6 +96,7 @@ function ServiceCard({ name, icon, status, data, linkUrl, children, loading }) {
         no_key: { color: '#64748b', label: 'API Key não configurada' },
         error: { color: '#f97316', label: 'Erro na consulta' },
         cors_error: { color: '#f97316', label: 'CORS bloqueado' },
+        cors_blocked: { color: '#eab308', label: 'Disponível localmente' },
         not_found: { color: '#94a3b8', label: 'Não encontrado' },
         loading: { color: '#06b6d4', label: 'Consultando...' },
     }[loading ? 'loading' : status] || { color: '#64748b', label: status };
@@ -136,6 +137,25 @@ function ServiceCard({ name, icon, status, data, linkUrl, children, loading }) {
             {!loading && (status === 'error' || status === 'cors_error') && data?.error && (
                 <div style={{ fontSize: 12, color: '#f97316', display: 'flex', alignItems: 'center', gap: 6 }}>
                     <AlertTriangle size={13} /> {data.error}
+                </div>
+            )}
+
+            {!loading && status === 'cors_blocked' && (
+                <div style={{ background: 'rgba(234,179,8,0.06)', border: '1px solid rgba(234,179,8,0.2)', borderRadius: 8, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 12, color: '#eab308', fontWeight: 600, marginBottom: 4 }}>
+                        ⚠️ Disponível apenas ao rodar localmente
+                    </div>
+                    <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.6, marginBottom: 8 }}>
+                        Browsers bloqueiam chamadas diretas a APIs externas por segurança (CORS).
+                        No GitHub Pages este serviço não consegue ser consultado diretamente.
+                        Use <code style={{ background: 'rgba(255,255,255,0.07)', padding: '1px 4px', borderRadius: 3, fontFamily: 'monospace', fontSize: 11 }}>npm run dev</code> localmente para obter dados em tempo real.
+                    </div>
+                    {linkUrl && (
+                        <a href={linkUrl} target="_blank" rel="noopener noreferrer"
+                            style={{ fontSize: 11, color: '#06b6d4', display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}>
+                            Verificar manualmente no site <ExternalLink size={11} />
+                        </a>
+                    )}
                 </div>
             )}
 

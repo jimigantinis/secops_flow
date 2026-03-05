@@ -1,8 +1,14 @@
 // ─── Threat Intel API Service ───────────────────────────────────────────────
 // Todas as funções retornam um objeto { status, data, error }
-// status: 'ok' | 'no_key' | 'error' | 'not_found'
+// status: 'ok' | 'no_key' | 'error' | 'not_found' | 'cors_blocked'
+//
+// Em desenvolvimento (npm run dev): usa proxy do Vite → sem CORS
+// Em produção (GitHub Pages): APIs com custom headers são bloqueadas pelo browser
 
 const KEYS_STORAGE_KEY = 'secops_api_keys';
+
+// Detecta se está em modo desenvolvimento (proxy Vite disponível)
+const IS_DEV = import.meta.env.DEV;
 
 export function loadApiKeys() {
     try {
@@ -14,7 +20,7 @@ export function saveApiKeys(keys) {
     localStorage.setItem(KEYS_STORAGE_KEY, JSON.stringify(keys));
 }
 
-// ─── IP Info (GRÁTIS, sem API key, CORS OK) ──────────────────────────────────
+// ─── IP Info (GRÁTIS, sem API key, CORS OK em qualquer ambiente) ──────────────
 export async function fetchIPInfo(ip) {
     try {
         const res = await fetch(`https://ipinfo.io/${ip}/json`);
@@ -28,89 +34,97 @@ export async function fetchIPInfo(ip) {
 }
 
 // ─── AbuseIPDB ───────────────────────────────────────────────────────────────
+// Em dev: usa /api/abuseipdb → proxy Vite → api.abuseipdb.com (sem CORS)
+// Em produção: CORS bloqueia → retorna cors_blocked
 export async function fetchAbuseIPDB(ip, apiKey) {
     if (!apiKey) return { status: 'no_key' };
+
+    // Produção: browser não consegue fazer chamadas com custom headers a APIs externas
+    if (!IS_DEV) {
+        return {
+            status: 'cors_blocked',
+            error: 'Disponível apenas ao rodar localmente (npm run dev)',
+        };
+    }
+
     try {
-        const url = `https://api.abuseipdb.com/api/v2/check?ipAddress=${encodeURIComponent(ip)}&maxAgeInDays=90&verbose`;
+        // Rota via proxy Vite: /api/abuseipdb → https://api.abuseipdb.com
+        const url = `/api/abuseipdb/api/v2/check?ipAddress=${encodeURIComponent(ip)}&maxAgeInDays=90&verbose`;
         const res = await fetch(url, {
             headers: { 'Key': apiKey, 'Accept': 'application/json' },
         });
-        if (res.status === 401) return { status: 'error', error: 'API Key inválida' };
-        if (res.status === 429) return { status: 'error', error: 'Rate limit atingido' };
+        if (res.status === 401) return { status: 'error', error: 'API Key inválida — verifique em abuseipdb.com' };
+        if (res.status === 422) return { status: 'error', error: 'IP inválido' };
+        if (res.status === 429) return { status: 'error', error: 'Rate limit atingido — aguarde e tente novamente' };
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const d = await res.json();
         return { status: 'ok', data: d.data };
     } catch (e) {
-        // CORS error ou falha de rede
-        if (e.message.includes('Failed to fetch') || e.message.includes('CORS')) {
-            return { status: 'error', error: 'CORS — use a chave na extensão ou servidor proxy' };
-        }
         return { status: 'error', error: e.message };
     }
 }
 
 // ─── VirusTotal ──────────────────────────────────────────────────────────────
+// Em dev: usa /api/virustotal → proxy Vite → www.virustotal.com (sem CORS)
+// Em produção: CORS bloqueia → retorna cors_blocked
 export async function fetchVirusTotalIP(ip, apiKey) {
     if (!apiKey) return { status: 'no_key' };
+    if (!IS_DEV) return { status: 'cors_blocked', error: 'Disponível apenas localmente (npm run dev)' };
+
     try {
-        const res = await fetch(`https://www.virustotal.com/api/v3/ip-addresses/${ip}`, {
+        const res = await fetch(`/api/virustotal/api/v3/ip-addresses/${ip}`, {
             headers: { 'x-apikey': apiKey },
         });
         if (res.status === 401) return { status: 'error', error: 'API Key inválida' };
         if (res.status === 404) return { status: 'not_found' };
-        if (res.status === 429) return { status: 'error', error: 'Rate limit atingido (4 req/min)' };
+        if (res.status === 429) return { status: 'error', error: 'Rate limit — plano free: 4 req/min' };
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const d = await res.json();
         return { status: 'ok', data: d.data?.attributes };
     } catch (e) {
-        if (e.message.includes('Failed to fetch') || e.message.includes('CORS')) {
-            return { status: 'cors_error', error: 'CORS bloqueado pelo VirusTotal' };
-        }
         return { status: 'error', error: e.message };
     }
 }
 
 export async function fetchVirusTotalHash(hash, apiKey) {
     if (!apiKey) return { status: 'no_key' };
+    if (!IS_DEV) return { status: 'cors_blocked', error: 'Disponível apenas localmente (npm run dev)' };
+
     try {
-        const res = await fetch(`https://www.virustotal.com/api/v3/files/${hash}`, {
+        const res = await fetch(`/api/virustotal/api/v3/files/${hash}`, {
             headers: { 'x-apikey': apiKey },
         });
         if (res.status === 401) return { status: 'error', error: 'API Key inválida' };
         if (res.status === 404) return { status: 'not_found' };
-        if (res.status === 429) return { status: 'error', error: 'Rate limit (4 req/min free)' };
+        if (res.status === 429) return { status: 'error', error: 'Rate limit — plano free: 4 req/min' };
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const d = await res.json();
         return { status: 'ok', data: d.data?.attributes };
     } catch (e) {
-        if (e.message.includes('Failed to fetch') || e.message.includes('CORS')) {
-            return { status: 'cors_error', error: 'CORS bloqueado pelo VirusTotal' };
-        }
         return { status: 'error', error: e.message };
     }
 }
 
 export async function fetchVirusTotalDomain(domain, apiKey) {
     if (!apiKey) return { status: 'no_key' };
+    if (!IS_DEV) return { status: 'cors_blocked', error: 'Disponível apenas localmente (npm run dev)' };
+
     try {
-        const res = await fetch(`https://www.virustotal.com/api/v3/domains/${domain}`, {
+        const res = await fetch(`/api/virustotal/api/v3/domains/${domain}`, {
             headers: { 'x-apikey': apiKey },
         });
         if (res.status === 401) return { status: 'error', error: 'API Key inválida' };
         if (res.status === 404) return { status: 'not_found' };
-        if (res.status === 429) return { status: 'error', error: 'Rate limit (4 req/min free)' };
+        if (res.status === 429) return { status: 'error', error: 'Rate limit — plano free: 4 req/min' };
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const d = await res.json();
         return { status: 'ok', data: d.data?.attributes };
     } catch (e) {
-        if (e.message.includes('Failed to fetch') || e.message.includes('CORS')) {
-            return { status: 'cors_error', error: 'CORS bloqueado pelo VirusTotal' };
-        }
         return { status: 'error', error: e.message };
     }
 }
 
-// ─── NVD (CVE, GRÁTIS, sem key, CORS OK) ─────────────────────────────────────
+// ─── NVD (CVE, GRÁTIS, sem key, CORS OK em qualquer ambiente) ────────────────
 export async function fetchNVDCve(cveId) {
     try {
         const res = await fetch(`https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=${encodeURIComponent(cveId)}`);
@@ -126,7 +140,6 @@ export async function fetchNVDCve(cveId) {
 
 // ─── Helper: calcular veredicto consolidado ──────────────────────────────────
 export function calcVerdict(vtData, abuseData, ipInfoData) {
-    // VT: malicious > 0 = malicious, suspicious > 0 = suspicious
     const vtMalicious = vtData?.last_analysis_stats?.malicious || 0;
     const vtSuspicious = vtData?.last_analysis_stats?.suspicious || 0;
     const abuseScore = abuseData?.abuseConfidenceScore || 0;
